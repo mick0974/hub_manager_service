@@ -1,0 +1,40 @@
+name: hub_manager
+
+services:
+  hub_manager_db:
+    image: postgres:14-alpine3.17
+    container_name: hub_manager_db
+    volumes:
+      - hub_db_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "postgres" ]
+      interval: 30s
+      timeout: 60s
+      retries: 5
+      start_period: 80s
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  hub_manager_service:
+    build: .
+    container_name: hub_manager_service
+    expose:
+      - "8081"
+    depends_on:
+      - hub_manager_db
+    environment:
+      # SIMULATION_SERVER_URL: ws://matsim_simulator:9000/ws/simulation
+      SIMULATION_SERVER_URL: ws://localhost:8080/ws/simulation
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_URL: jdbc:postgresql://t4-postgres_db:5432/transaction_db
+      HUB_TARGET: hub_1
+    restart: unless-stopped
+
+volumes:
+  hub_db_data:
