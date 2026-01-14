@@ -2,7 +2,7 @@ package com.sch.hub_manager_service.simulation.mapper;
 
 import com.sch.hub_manager_service.domain.model.persistency.Charger;
 import com.sch.hub_manager_service.domain.model.persistency.ChargerOperationalState;
-import com.sch.hub_manager_service.simulation.dto.ChargerDTO;
+import com.sch.hub_manager_service.simulation.dto.api.ChargerDTO;
 
 public class SimulationMapper {
 

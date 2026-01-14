@@ -1,4 +1,4 @@
-package com.sch.hub_manager_service.simulation.websocket.dto.payload;
+package com.sch.hub_manager_service.simulation.dto.websocket.payload;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;

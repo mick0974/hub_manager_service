@@ -1,4 +1,4 @@
-package com.sch.hub_manager_service.simulation.websocket.dto;
+package com.sch.hub_manager_service.simulation.dto.websocket;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;

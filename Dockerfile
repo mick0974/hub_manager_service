@@ -1,17 +1,13 @@
-# Build
+# Build stage
 FROM maven:3.8.8-eclipse-temurin-21-alpine AS build
-
 WORKDIR /build
-
 COPY pom.xml .
+RUN mvn dependency:go-offline
 COPY src ./src
+RUN mvn clean package -DskipTests
 
-RUN mvn clean package
-
-# Rub
+# Run stage
 FROM eclipse-temurin:21-jdk-alpine
-
 WORKDIR /app
 COPY --from=build /build/target/*.jar app.jar
-
 ENTRYPOINT ["java","-jar","app.jar"]

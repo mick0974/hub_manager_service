@@ -1,0 +1,43 @@
+<configuration>
+
+    <!-- Appender hub -->
+    <appender name="HUB_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>[HUB] %d{HH:mm:ss.SSS} %-5level %logger{50} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Appender simulazione -->
+    <appender name="SIM_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>[SIM] %d{HH:mm:ss.SSS} %-5level %logger{50} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Appendere framework  -->
+    <appender name="FW_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>[FW] %d{HH:mm:ss.SSS} %-5level %logger{50} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Logger HUB -->
+    <logger name="com.sch.hub_manager_service.hub"
+            level="INFO"
+            additivity="false">
+        <appender-ref ref="HUB_CONSOLE"/>
+    </logger>
+
+    <!-- Logger SIMULATION -->
+    <logger name="com.sch.hub_manager_service.simulation"
+            level="INFO"
+            additivity="false">
+        <appender-ref ref="SIM_CONSOLE"/>
+    </logger>
+
+    <!-- ROOT -->
+    <root level="INFO">
+        <appender-ref ref="FW_CONSOLE"/>
+    </root>
+
+</configuration>

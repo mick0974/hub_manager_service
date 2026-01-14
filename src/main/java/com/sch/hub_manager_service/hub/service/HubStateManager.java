@@ -1,9 +1,9 @@
 package com.sch.hub_manager_service.hub.service;
 
 import com.sch.hub_manager_service.domain.model.persistency.ChargerOperationalState;
-import com.sch.hub_manager_service.hub.event.ChargerStateChangedEvent;
 import com.sch.hub_manager_service.domain.model.state.ChargerMetrics;
 import com.sch.hub_manager_service.domain.model.state.ChargerState;
+import com.sch.hub_manager_service.hub.event.ChargerStateChangedEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 

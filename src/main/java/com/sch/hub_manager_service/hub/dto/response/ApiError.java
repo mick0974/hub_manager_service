@@ -1,11 +1,12 @@
 package com.sch.hub_manager_service.hub.dto.response;
 
+import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.Setter;
 import lombok.ToString;
 
+@AllArgsConstructor
 @Getter
-@Setter
 @ToString
-public class TransactionDTO {
+public class ApiError {
+    private String message;
 }

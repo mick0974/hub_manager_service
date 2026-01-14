@@ -1,4 +1,4 @@
-package com.sch.hub_manager_service.simulation.dto;
+package com.sch.hub_manager_service.simulation.dto.api;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

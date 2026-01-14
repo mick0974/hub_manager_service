@@ -1,10 +1,7 @@
 package com.sch.hub_manager_service.domain.model.state;
 
 import com.sch.hub_manager_service.domain.model.persistency.ChargerOperationalState;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
+import lombok.*;
 
 import java.util.Objects;
 
@@ -12,6 +9,7 @@ import java.util.Objects;
 @Setter
 @ToString
 @AllArgsConstructor
+@NoArgsConstructor
 public class ChargerState {
 
     private String chargerId;

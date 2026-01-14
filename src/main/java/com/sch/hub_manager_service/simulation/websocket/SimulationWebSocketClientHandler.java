@@ -4,12 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sch.hub_manager_service.hub.service.HubStateManager;
 import com.sch.hub_manager_service.domain.model.state.ChargerMetrics;
-import com.sch.hub_manager_service.simulation.websocket.dto.WebSocketUpdate;
-import com.sch.hub_manager_service.simulation.websocket.dto.payload.ChargerStatus;
-import com.sch.hub_manager_service.simulation.websocket.dto.payload.HubStatusPayload;
-import com.sch.hub_manager_service.simulation.websocket.dto.payload.TimeStepPayload;
+import com.sch.hub_manager_service.hub.service.HubStateManager;
+import com.sch.hub_manager_service.simulation.dto.websocket.WebSocketUpdate;
+import com.sch.hub_manager_service.simulation.dto.websocket.payload.HubStatusPayload;
+import com.sch.hub_manager_service.simulation.dto.websocket.payload.TimeStepPayload;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,41 +21,47 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @Component
 public class SimulationWebSocketClientHandler extends TextWebSocketHandler {
+
     @Value("${hub.target}")
     private String targetHubId;
 
     private final HubStateManager hubStateManager;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final Logger logger = LoggerFactory.getLogger(SimulationWebSocketClientHandler.class);
-    private WebSocketSession session;
+    private final ObjectMapper objectMapper;
 
-    public SimulationWebSocketClientHandler(HubStateManager hubStateManager) {
+    private final Logger logger = LoggerFactory.getLogger(SimulationWebSocketClientHandler.class);
+
+    public SimulationWebSocketClientHandler(HubStateManager hubStateManager, ObjectMapper objectMapper) {
         this.hubStateManager = hubStateManager;
+        this.objectMapper = objectMapper;
     }
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) {
-        this.session = session;
+    public void afterConnectionEstablished(@NonNull WebSocketSession session) {
         logger.info("[WebSocket] Connessione alla Simulazione completata con successo");
     }
 
     @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+    protected void handleTextMessage(@NonNull WebSocketSession session, TextMessage message) {
         logger.info("[WebSocket] Messaggio ricevuto: {}", message.getPayload());
         String payload = message.getPayload();
+
         try {
             JsonNode messageRoot = objectMapper.readTree(payload);
-            String messageType = messageRoot.get("type").asText();
+            JsonNode typeNode = messageRoot.get("type");
 
-            switch (messageType) {
-                case "TimeStepUpdate":
-                    handleTimeStepPayload(payload);
-                    break;
-                default:
-                    logger.warn("[WebSocket] Ricevuto messaggio con 'type' sconosciuto: {}", messageType);
+            if (typeNode == null || !typeNode.isTextual()) {
+                logger.error("[WebSocket] Il messaggio ricevuto non contiene il campo \"type\"");
+                return;
+            }
+
+            String type = typeNode.asText();
+            switch (type) {
+                case "TimeStepUpdate" -> handleTimeStepPayload(payload);
+                default -> logger.warn("[WebSocket] Ricevuto messaggio con 'type' sconosciuto: {}", type);
             }
         } catch (JsonProcessingException e) {
             logger.error("[WebSocket] Errore durante l'elaborazione del payload JSON ricevuto nel messaggio: {}", e.getMessage());
@@ -72,46 +78,39 @@ public class SimulationWebSocketClientHandler extends TextWebSocketHandler {
 
         logger.info("[WebSocket] Ricevuto messaggio di tipo TimeStepPayload");
 
-        HubStatusPayload hubTarget = message.getPayload().getHubs().stream()
+        Optional<HubStatusPayload> hubTargetOpt = message.getPayload().getHubs().stream()
                 .filter(dto -> dto.getHubId().equals(targetHubId))
-                .findFirst()
-                .orElse(null);
+                .findFirst();
 
-        if (hubTarget == null) {
+        if (hubTargetOpt.isEmpty()) {
             logger.info("[WebSocket] Il messaggio ricevuto non aggiorna lo stato dell'hub target {}", targetHubId);
             return;
-        } else if (hubTarget.getChargers().isEmpty()) {
-            logger.info("[WebSocket] Il messaggio ricevuto non contiene aggiornamento per le colonnine dell'hub target {}", targetHubId);
+        }
+
+        HubStatusPayload hubTarget = hubTargetOpt.get();
+
+        if (hubTarget.getChargers() == null || hubTarget.getChargers().isEmpty()) {
+            logger.info("[WebSocket] Nessun aggiornamento colonnine per l'hub target {}", targetHubId);
             return;
         }
 
         Map<String, ChargerMetrics> update = new HashMap<>();
-        for (String chargerId : hubTarget.getChargers().keySet()) {
-            ChargerStatus status = message.getPayload().getHubs().getFirst().getChargers().get(chargerId);
-            update.put(chargerId, new ChargerMetrics(status.getEnergy(), status.isOccupied()));
-        }
+        hubTarget.getChargers().forEach((chargerId, chargerMetrics) ->
+                update.put(chargerId, new ChargerMetrics(chargerMetrics.getEnergy(), chargerMetrics.isOccupied())));
 
+        logger.info("[WebSocket] Aggiornamento elaborato con successo, invio dati a HubStateManager");
         hubStateManager.updateFromSimulation(update);
-
     }
 
     @Override
-    public void handleTransportError(
-            WebSocketSession session,
-            Throwable exception) {
-
+    public void handleTransportError(@NonNull WebSocketSession session, Throwable exception) {
         logger.error("[WebSocket] Errore di trasporto: {}", exception.getMessage());
+
     }
 
     @Override
-    public void afterConnectionClosed(
-            WebSocketSession session,
-            CloseStatus status) {
-
-        logger.info("[WS] Connessione alla simulazione chiusa con stato {}", status);
+    public void afterConnectionClosed(@NonNull WebSocketSession session, @NonNull CloseStatus status) {
+        logger.info("[WebSocket] Connessione alla simulazione chiusa con stato {}", status);
     }
 
-    public boolean isConnected() {
-        return session != null && session.isOpen();
-    }
 }
