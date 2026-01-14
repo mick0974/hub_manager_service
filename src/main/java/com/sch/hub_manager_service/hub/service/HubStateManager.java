@@ -56,10 +56,13 @@ public class HubStateManager {
 
         currentState.setOperationalState(newOperationalState);
 
-        // Notifico il cambiamento di stato
-        eventPublisher.publishEvent(
-                new ChargerStateChangedEvent(List.of(currentState))
-        );
+        // Notifico il cambiamento di stato solo se la colonnina viene spenda o disattivata. La notifica della riaccensione
+        // verrà inviata da updateFromSimulation() quando lo stato varrà aggiornato
+        if (newOperationalState.equals(ChargerOperationalState.INACTIVE) || newOperationalState.equals(ChargerOperationalState.OFF)) {
+            eventPublisher.publishEvent(
+                    new ChargerStateChangedEvent(List.of(currentState))
+            );
+        }
     }
 
     public Map<String, ChargerState> getCurrentStateMap() {
