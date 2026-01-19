@@ -2,7 +2,7 @@ package com.sch.hub_manager_service.config;
 
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ser.std.StringSerializer;
-import com.sch.hub_manager_service.hub.event.ChargerStateChangedEvent;
+import com.sch.hub_manager_service.integration.output.kafka.message.HubIntegrationMessage;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -21,7 +21,7 @@ public class KafkaProducerConfig {
     private String bootstrapServers;
 
     @Bean
-    public ProducerFactory<String, ChargerStateChangedEvent> producerFactory() {
+    public ProducerFactory<String, HubIntegrationMessage<?>> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
@@ -30,7 +30,7 @@ public class KafkaProducerConfig {
     }
 
     @Bean
-    public KafkaTemplate<String, ChargerStateChangedEvent> kafkaTemplate() {
+    public KafkaTemplate<String, HubIntegrationMessage<?>> kafkaTemplate() {
         return new KafkaTemplate<>(producerFactory());
     }
 }

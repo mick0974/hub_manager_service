@@ -1,20 +1,27 @@
 package com.sch.hub_manager_service.domain.model.state;
 
-import com.sch.hub_manager_service.domain.model.persistency.ChargerOperationalState;
-import lombok.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 
 import java.util.Objects;
 
 @Getter
 @Setter
 @ToString
-@AllArgsConstructor
 @NoArgsConstructor
 public class ChargerState {
 
     private String chargerId;
-    private ChargerOperationalState operationalState;
+    private PlugType plugType;
+    private ChargerOperationalState chargerOperationalState = ChargerOperationalState.ON;
     private ChargerMetrics metrics;
+
+    public ChargerState(String chargerId, PlugType plugType) {
+        this.chargerId = chargerId;
+        this.plugType = plugType;
+    }
 
     public boolean updateFromSimulation(ChargerMetrics incomingState) {
         if (!canAcceptSimulationUpdate()) {
@@ -30,16 +37,21 @@ public class ChargerState {
     }
 
     public boolean updateOperationalState(ChargerOperationalState newState) {
-        if (this.operationalState == newState) {
+        if (this.chargerOperationalState == newState) {
             return false;
         }
 
-        this.operationalState = newState;
+        this.chargerOperationalState = newState;
         return true;
     }
 
     private boolean canAcceptSimulationUpdate() {
-        return operationalState.equals(ChargerOperationalState.ON) || operationalState.equals(ChargerOperationalState.ACTIVE);
+        return chargerOperationalState.equals(ChargerOperationalState.ON) || chargerOperationalState.equals(ChargerOperationalState.ACTIVE);
+    }
+
+    public void clearMetrics() {
+        // this.metrics = new ChargerMetrics(0, false);
+        this.metrics = new ChargerMetrics(this.metrics.getEnergy(), false);
     }
 
     @Override
@@ -48,14 +60,14 @@ public class ChargerState {
 
         ChargerState that = (ChargerState) o;
         return Objects.equals(chargerId, that.chargerId) &&
-                operationalState == that.operationalState &&
+                chargerOperationalState == that.chargerOperationalState &&
                 Objects.equals(metrics, that.metrics);
     }
 
     @Override
     public int hashCode() {
         int result = Objects.hashCode(chargerId);
-        result = 31 * result + Objects.hashCode(operationalState);
+        result = 31 * result + Objects.hashCode(chargerOperationalState);
         result = 31 * result + Objects.hashCode(metrics);
         return result;
     }

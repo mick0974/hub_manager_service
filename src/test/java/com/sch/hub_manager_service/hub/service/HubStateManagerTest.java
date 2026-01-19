@@ -1,19 +1,24 @@
 package com.sch.hub_manager_service.hub.service;
 
-import com.sch.hub_manager_service.domain.model.persistency.ChargerOperationalState;
-import com.sch.hub_manager_service.domain.model.state.ChargerMetrics;
-import com.sch.hub_manager_service.domain.model.state.ChargerState;
-import com.sch.hub_manager_service.hub.event.ChargerStateChangedEvent;
+import com.sch.hub_manager_service.domain.model.state.*;
+import com.sch.hub_manager_service.hub.event.ChargerMetricsChangedEvent;
+import com.sch.hub_manager_service.hub.event.ChargerOperationalStateChangedEvent;
+import com.sch.hub_manager_service.hub.service.exception.InvalidChargerStateTransitionException;
+import lombok.extern.log4j.Log4j2;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.util.Pair;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
+@Log4j2
 class HubStateManagerTest {
 
     private ApplicationEventPublisher eventPublisher;
@@ -25,9 +30,9 @@ class HubStateManagerTest {
         hubStateManager = new HubStateManager(eventPublisher);
     }
 
-    private void initializeCache(String chargerId, ChargerMetrics metrics) {
-        Map<String, ChargerMetrics> update = Map.of(chargerId, metrics);
-        hubStateManager.updateFromSimulation(update);
+    private void initializeCache(String chargerId, ChargerMetrics chargerMetrics) {
+        hubStateManager.initChargersStates(List.of(Pair.of(chargerId, PlugType.STANDARD)));
+        hubStateManager.updateFromSimulation(mock(HubMetrics.class), Map.of(chargerId, chargerMetrics), 0.0);
         reset(eventPublisher);
     }
 
@@ -37,20 +42,24 @@ class HubStateManagerTest {
     }
 
     @Test
-    void updateFromSimulation_firstInsert_shouldPublishEvent() {
+    void updateFromSimulation_UnknownCharger_shouldDoNothing() {
+        // Inizializzo la cache
+        ChargerMetrics metrics = mock(ChargerMetrics.class);
+        initializeCache("charger-1", metrics);
+
         // Eseguo il caso da testare
-        Map<String, ChargerMetrics> update = Map.of("charger-1", mock(ChargerMetrics.class));
-        hubStateManager.updateFromSimulation(update);
+        Map<String, ChargerMetrics> update = Map.of("charger-2", mock(ChargerMetrics.class));
+        hubStateManager.updateFromSimulation(mock(HubMetrics.class), update, 0.0);
 
         // Verifico che:
-        // - Il nuovo stato sia salvato sulla cache
-        // - Venga generato 1 evento di aggiornamento di stato
-        ChargerState state = hubStateManager.getChargerCurrentState("charger-1");
-        assertThat(state).isNotNull();
-        assertThat(state.getOperationalState()).isEqualTo(ChargerOperationalState.ACTIVE);
+        // - Il nuovo stato non venga salvato sulla cache
+        // - Non venga generato alcun evento
+        ChargerState state = hubStateManager.getHubState().getChargersStates().get("charger-2");
+        assertThat(hubStateManager.getHubState().getChargersStates().size()).isEqualTo(1);
+        assertThat(state).isNull();
 
-        verify(eventPublisher, times(1))
-                .publishEvent(any(ChargerStateChangedEvent.class));
+        verify(eventPublisher, never())
+                .publishEvent(any(ChargerMetricsChangedEvent.class));
     }
 
     @Test
@@ -61,17 +70,17 @@ class HubStateManagerTest {
 
         // Eseguo il caso da testare
         Map<String, ChargerMetrics> simulationUpdate = Map.of("charger-1", metrics);
-        hubStateManager.updateFromSimulation(simulationUpdate);
+        hubStateManager.updateFromSimulation(mock(HubMetrics.class), simulationUpdate, 0.0);
 
         // Verifico che:
         // - Che il numero di stati presenti sia 1 e sia associato a "charger-1"
         // - Non venga generato alcun evento
-        assertThat(hubStateManager.getCurrentStateMap().size()).isEqualTo(1);
+        assertThat(hubStateManager.getHubState().getChargersStates().size()).isEqualTo(1);
 
-        ChargerState state = hubStateManager.getChargerCurrentState("charger-1");
+        ChargerState state = hubStateManager.getChargerState("charger-1");
         assertThat(state).isNotNull();
 
-        verify(eventPublisher, never()).publishEvent(any(ChargerStateChangedEvent.class));
+        verify(eventPublisher, never()).publishEvent(any(ChargerMetricsChangedEvent.class));
     }
 
     @Test
@@ -81,22 +90,23 @@ class HubStateManagerTest {
 
         // Eseguo il caso da testare
         Map<String, ChargerMetrics> simulationUpdate = Map.of("charger-1", mock(ChargerMetrics.class));
-        hubStateManager.updateFromSimulation(simulationUpdate);
+        hubStateManager.updateFromSimulation(mock(HubMetrics.class), simulationUpdate, 0.0);
 
         // Verifico che:
         // - Che il numero di stati presenti sia 1 e sia associato a "charger-1"
         // - Venga generato 1 evento di aggiornamento di stato associato a "charger-1"
-        assertThat(hubStateManager.getCurrentStateMap().size()).isEqualTo(1);
+        assertThat(hubStateManager.getHubState().getChargersStates().size()).isEqualTo(1);
 
-        ChargerState state = hubStateManager.getChargerCurrentState("charger-1");
+        ChargerState state = hubStateManager.getChargerState("charger-1");
         assertThat(state).isNotNull();
 
-        ArgumentCaptor<ChargerStateChangedEvent> captor = ArgumentCaptor.forClass(ChargerStateChangedEvent.class);
+        ArgumentCaptor<ChargerMetricsChangedEvent> captor = ArgumentCaptor.forClass(ChargerMetricsChangedEvent.class);
         verify(eventPublisher).publishEvent(captor.capture());
 
-        ChargerStateChangedEvent event = captor.getValue();
-        assertThat(event.getNewStates().size()).isEqualTo(1);
-        assertThat(event.getNewStates().getFirst().getChargerId())
+        ChargerMetricsChangedEvent event = captor.getValue();
+        log.info(event);
+        assertThat(event.getNewChargerStates().size()).isEqualTo(1);
+        assertThat(event.getNewChargerStates().getFirst().getChargerId())
                 .isEqualTo("charger-1");
     }
 
@@ -112,45 +122,32 @@ class HubStateManagerTest {
         // Verifico che:
         // - L'OperationalState di "charger-1" sia cambiato correttamente
         // - Venga generato 1 evento di aggiornamento di stato associato a "charger-1"
-        ChargerState state = hubStateManager.getChargerCurrentState("charger-1");
+        ChargerState state = hubStateManager.getChargerState("charger-1");
         assertThat(state).isNotNull();
-        assertThat(state.getOperationalState()).isEqualTo(newOperationalState);
+        assertThat(state.getChargerOperationalState()).isEqualTo(newOperationalState);
 
-        verify(eventPublisher, times(1)).publishEvent(any(ChargerStateChangedEvent.class));
+        verify(eventPublisher, times(1)).publishEvent(any(ChargerOperationalStateChangedEvent.class));
     }
 
     @Test
     void updateChargerOperationalState_sameState_shouldNotPublishEvent() {
         // Inizializzo la cache
+        ChargerOperationalState chargerOperationalState = mock(ChargerOperationalState.class);
         initializeCache("charger-1", mock(ChargerMetrics.class));
+        initializeChargerOperationalState("charger-1", chargerOperationalState);
 
-        // Aggiorno lo stato
-        ChargerOperationalState newOperationalState = ChargerOperationalState.ACTIVE;
-        hubStateManager.updateChargerOperationalState("charger-1", newOperationalState);
+        // Eseguo il caso da testare
+        assertThrows(InvalidChargerStateTransitionException.class, () ->
+                hubStateManager.updateChargerOperationalState("charger-1", chargerOperationalState));
 
         // Verifico che:
         // - L'OperationalState di "charger-1" sia cambiato correttamente
         // - Venga generato 1 evento di aggiornamento di stato associato a "charger-1"
-        ChargerState state = hubStateManager.getChargerCurrentState("charger-1");
+        ChargerState state = hubStateManager.getChargerState("charger-1");
         assertThat(state).isNotNull();
-        assertThat(state.getOperationalState()).isEqualTo(newOperationalState);
+        assertThat(state.getChargerOperationalState()).isEqualTo(chargerOperationalState);
 
-        verify(eventPublisher, never()).publishEvent(any(ChargerStateChangedEvent.class));
-    }
-
-    @Test
-    void updateChargerOperationalState_unknownCharger_shouldDoNothing() {
-        // Eseguo il caso da testare
-        hubStateManager.updateChargerOperationalState(
-                "unknown",
-                ChargerOperationalState.ON
-        );
-
-        // Verifico che:
-        // - Nessuno stato venga salvato
-        // - Non venga generato alcun evento
-        assertThat(hubStateManager.getCurrentStateMap().size()).isZero();
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(eventPublisher, never()).publishEvent(any(ChargerOperationalStateChangedEvent.class));
     }
 
     @Test
@@ -163,17 +160,16 @@ class HubStateManagerTest {
 
         // Eseguo il caso da testare
         Map<String, ChargerMetrics> simulationUpdate = Map.of("charger-1", mock(ChargerMetrics.class));
-        hubStateManager.updateFromSimulation(simulationUpdate);
+        hubStateManager.updateFromSimulation(mock(HubMetrics.class), simulationUpdate, 0.0);
 
         // Verifico che:
         // - Lo stato non venga aggiornato (charger inattivo)
         // - Non venga generato alcun evento
-        ChargerState state = hubStateManager.getChargerCurrentState("charger-1");
+        ChargerState state = hubStateManager.getChargerState("charger-1");
         assertThat(state).isNotNull();
-        assertThat(state.getOperationalState()).isEqualTo(cachedOperationalState);
-        assertThat(state.getMetrics()).isSameAs(cachedMetrics);
+        assertThat(state.getChargerOperationalState()).isEqualTo(cachedOperationalState);
 
-        verify(eventPublisher, never()).publishEvent(any(ChargerStateChangedEvent.class));
+        verify(eventPublisher, never()).publishEvent(any(ChargerMetricsChangedEvent.class));
     }
 
     @Test
@@ -186,16 +182,15 @@ class HubStateManagerTest {
 
         // Eseguo il caso da testare
         Map<String, ChargerMetrics> simulationUpdate = Map.of("charger-1", mock(ChargerMetrics.class));
-        hubStateManager.updateFromSimulation(simulationUpdate);
+        hubStateManager.updateFromSimulation(mock(HubMetrics.class), simulationUpdate, 0.0);
 
         // Verifico che:
         // - Lo stato non venga aggiornato (charger inattivo)
         // - Non venga generato alcun evento
-        ChargerState state = hubStateManager.getChargerCurrentState("charger-1");
+        ChargerState state = hubStateManager.getChargerState("charger-1");
         assertThat(state).isNotNull();
-        assertThat(state.getOperationalState()).isEqualTo(cachedOperationalState);
-        assertThat(state.getMetrics()).isSameAs(cachedMetrics);
+        assertThat(state.getChargerOperationalState()).isEqualTo(cachedOperationalState);
 
-        verify(eventPublisher, never()).publishEvent(any(ChargerStateChangedEvent.class));
+        verify(eventPublisher, never()).publishEvent(any(ChargerMetricsChangedEvent.class));
     }
 }

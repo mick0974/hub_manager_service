@@ -12,8 +12,8 @@ public class OpenApiConfig {
     public OpenAPI customOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Hub Manager Service API")
-                        .version("1.0")
-                        .description("Gestione hub e inizializzazione tramite simulazione"));
+                        .title("Hub Management Service API")
+                        .version("1.0.0")
+                        .description("API per la gestione degli hub e delle prenotazioni"));
     }
 }

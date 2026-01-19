@@ -1,5 +1,6 @@
 package com.sch.hub_manager_service.domain.model.state;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.ToString;
@@ -8,8 +9,13 @@ import lombok.ToString;
 @AllArgsConstructor
 @ToString
 public class ChargerMetrics {
-    private double energy;
-    private boolean occupied;
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private double energy = 0.0;
+    private boolean occupied = false;
+
+    public ChargerMetrics deepCopy() {
+        return new ChargerMetrics(energy, occupied);
+    }
 
     @Override
     public boolean equals(Object o) {

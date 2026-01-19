@@ -1,79 +1,103 @@
 package com.sch.hub_manager_service.hub.service;
 
-import com.sch.hub_manager_service.domain.model.persistency.ChargerOperationalState;
-import com.sch.hub_manager_service.domain.model.state.ChargerMetrics;
-import com.sch.hub_manager_service.domain.model.state.ChargerState;
-import com.sch.hub_manager_service.hub.event.ChargerStateChangedEvent;
+import com.sch.hub_manager_service.domain.model.state.*;
+import com.sch.hub_manager_service.hub.event.ChargerMetricsChangedEvent;
+import com.sch.hub_manager_service.hub.event.ChargerOperationalStateChangedEvent;
+import com.sch.hub_manager_service.hub.event.data.ChargerMetricsChange;
+import com.sch.hub_manager_service.hub.service.exception.ChargerStateNotAvailableException;
+import com.sch.hub_manager_service.hub.service.exception.HubNotInitializedException;
+import com.sch.hub_manager_service.hub.service.exception.InvalidChargerStateTransitionException;
+import lombok.extern.log4j.Log4j2;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
+@Log4j2
 @Service
 public class HubStateManager {
 
-    private final Map<String, ChargerState> currentStateMap = new ConcurrentHashMap<>();
+    private HubState hubState = null;
     private final ApplicationEventPublisher eventPublisher;
 
     public HubStateManager(ApplicationEventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
     }
 
-    public void updateFromSimulation(Map<String, ChargerMetrics> simulatorStates) {
-        List<ChargerState> changedStates = new ArrayList<>();
+    public synchronized void initChargersStates(List<Pair<String, PlugType>> initialStates) {
+        Map<String, ChargerState> chargerStates = new HashMap<>();
+        initialStates.forEach(pair ->
+                chargerStates.put(pair.getFirst(), new ChargerState(pair.getFirst(), pair.getSecond())));
 
-        for (Map.Entry<String, ChargerMetrics> entry : simulatorStates.entrySet()) {
+        hubState = new HubState();
+        hubState.setAggregatedMetrics(new HubMetrics());
+        hubState.setSimulationTimestamp(0.0);
+        hubState.setChargersStates(chargerStates);
+    }
+
+    public synchronized void updateFromSimulation(HubMetrics hubMetrics, Map<String, ChargerMetrics> chargerMetrics, Double simulationTimestamp) {
+        List<ChargerMetricsChange> changedStates = new ArrayList<>();
+
+        hubState.setAggregatedMetrics(hubMetrics);
+        hubState.setSimulationTimestamp(simulationTimestamp);
+        for (Map.Entry<String, ChargerMetrics> entry : chargerMetrics.entrySet()) {
             String chargerId = entry.getKey();
-            ChargerMetrics metrics = entry.getValue();
-
-            ChargerState currentState = currentStateMap.get(chargerId);
+            ChargerState currentState = hubState.getChargersStates().get(chargerId);
 
             if (currentState == null) {
-                currentState = new ChargerState(chargerId, ChargerOperationalState.ACTIVE, metrics);
-                currentStateMap.put(chargerId, currentState);
-                changedStates.add(currentState);
+                log.warn("[HubStateManager] Ricevuto stato per connettore non esistente in memoria: {}", chargerId);
             } else {
                 boolean updated = currentState.updateFromSimulation(entry.getValue());
                 if (updated)
-                    changedStates.add(currentState);
+                    changedStates.add(new ChargerMetricsChange(chargerId, currentState.getMetrics().deepCopy()));
             }
         }
 
         // Notifico il cambiamento di stato
         if (!changedStates.isEmpty()) {
-            eventPublisher.publishEvent(new ChargerStateChangedEvent(changedStates));
+            eventPublisher.publishEvent(new ChargerMetricsChangedEvent(hubMetrics, changedStates, simulationTimestamp));
+        } else {
+            log.info("[HubStateManager] Nessuno stato aggiornato");
         }
     }
 
-    public void updateChargerOperationalState(String chargerId, ChargerOperationalState newOperationalState) {
-        ChargerState currentState = currentStateMap.get(chargerId);
-        if (currentState == null || currentState.getOperationalState() == newOperationalState) {
-            return;
-        }
+    public synchronized void updateChargerOperationalState(String chargerId, ChargerOperationalState newOperationalState) {
+        ChargerState chargerState = getChargerState(chargerId);
 
-        currentState.setOperationalState(newOperationalState);
-
-        // Simulo lo spegnimento della colonnina settando a null lo stato restituito dal simulatore
-        if (newOperationalState.equals(ChargerOperationalState.INACTIVE) || newOperationalState.equals(ChargerOperationalState.OFF))
-            currentStateMap.put(chargerId, null);
-
-        // Notifico il cambiamento di stato solo se la colonnina viene spenta o disattivata. La notifica della riaccensione
-        // verrà inviata da updateFromSimulation() quando lo stato varrà aggiornato
-        if (newOperationalState.equals(ChargerOperationalState.INACTIVE) || newOperationalState.equals(ChargerOperationalState.OFF)) {
-            eventPublisher.publishEvent(
-                    new ChargerStateChangedEvent(List.of(currentState))
+        if (!chargerState.updateOperationalState(newOperationalState)) {
+            throw new InvalidChargerStateTransitionException(
+                    chargerState.getChargerOperationalState(), newOperationalState
             );
         }
+
+        // Simulo lo spegnimento della colonnina settando a 0 lo stato restituito dal simulatore
+        if (newOperationalState.equals(ChargerOperationalState.INACTIVE) || newOperationalState.equals(ChargerOperationalState.OFF)) {
+            chargerState.clearMetrics();
+        }
+
+        eventPublisher.publishEvent(
+                new ChargerOperationalStateChangedEvent(chargerId, newOperationalState)
+        );
     }
 
-    public Map<String, ChargerState> getCurrentStateMap() {
-        return Map.copyOf(currentStateMap);
+    public synchronized HubState getHubState() {
+        if (hubState == null)
+            throw new HubNotInitializedException("Hub non ancora inizializzato");
+        return hubState.deepCopy();
     }
 
-    public ChargerState getChargerCurrentState(String chargerId) {
-        return currentStateMap.get(chargerId);
+    public synchronized ChargerState getChargerState(String chargerId) {
+        ChargerState state = getHubState().getChargerState(chargerId);
+        if (state == null) {
+            throw new ChargerStateNotAvailableException("Stato non presente per la colonnina: " + chargerId);
+        }
+        return state;
     }
+
+
 }
+
